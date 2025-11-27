@@ -16,8 +16,15 @@ app = Flask(
     __name__,
     template_folder=os.path.join(BASE_DIR, 'templates'),
 )
-app.config['SECRET_KEY'] = 'your-secret-key-change-this'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///admin_panel.db'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-this')
+# Allow overriding DB via env var `DATABASE_URL`, otherwise use a sqlite file in project
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(BASE_DIR, 'admin_panel.db')}")
+# Optional: max upload size (bytes)
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 100 * 1024 * 1024))
+# Upload folder for file references (if needed). Can be absolute or relative to project.
+app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'user_bots')
+if not os.path.isabs(app.config['UPLOAD_FOLDER']):
+    app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, app.config['UPLOAD_FOLDER'])
 
 db = SQLAlchemy(app)
 
@@ -92,6 +99,17 @@ def login():
         return jsonify({'error': 'Invalid credentials'}), 401
     
     return render_template('admin_login.html')
+
+
+@app.context_processor
+def inject_env_vars():
+    """Expose a small set of environment/config values to all templates."""
+    return {
+        'SITE_NAME': os.environ.get('SITE_NAME', 'Admin Control Panel'),
+        'ADMIN_CONTACT': os.environ.get('ADMIN_CONTACT', ''),
+        'UPLOAD_FOLDER': app.config.get('UPLOAD_FOLDER'),
+        'ENV': os.environ.get('FLASK_ENV', 'production')
+    }
 
 @app.route('/dashboard')
 def dashboard():
@@ -224,9 +242,13 @@ if __name__ == '__main__':
             print("✅ Default admin account created: username=admin, password=admin123")
             print("⚠️  IMPORTANT: Change the default admin password immediately!")
     
-    print("\n🚀 Admin Control Panel Started")
-    print("📊 Access at: http://localhost:5000/login")
+    # Allow PORT and DEBUG to be controlled via environment variables
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('DEBUG', 'False').lower() in ('1', 'true', 'yes')
+
+    print(f"\n🚀 Admin Control Panel Started")
+    print(f"📊 Access at: http://localhost:{port}/login")
     print("👤 Username: admin")
     print("🔑 Password: admin123\n")
-    
-    app.run(debug=False, host='0.0.0.0', port=5000)
+
+    app.run(debug=debug, host='0.0.0.0', port=port)
